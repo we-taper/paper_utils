@@ -1,9 +1,14 @@
+import os
+import re
 from pathlib import Path
 from typing import List, Tuple
 
 import PyQt5
+import arxiv
 import popplerqt5
-import os
+from loguru import logger
+from pdfminer.pdffont import PDFUnicodeNotDefined
+from pdftitle import get_title_from_file
 
 _WHITE = (255, 255, 255)
 
@@ -81,22 +86,55 @@ MAIN
 </details>
 """
 
+_arxiv_pattern = re.compile(r"\d*\.\d*\.pdf")
 
-def guess_pdf_title(pdf_path):
-    # TODO: make better guess
-    return pdf_path
+
+def guess_pdf_title_batched(pdf_path_list: List[str]) -> List[str]:
+    arxiv_id_list = []
+    arxiv_list = []
+    other_list = []
+    for idx, pdf_path in enumerate(pdf_path_list):
+        pdf_path = Path(pdf_path)
+        if _arxiv_pattern.match(pdf_path.name):
+            arxiv_id_list.append((idx, pdf_path.name[:-4]))  # strip ".pdf"
+        else:
+            try:
+                title = get_title_from_file(pdf_path)
+            except PDFUnicodeNotDefined as e:
+                logger.error(f"Error in {guess_pdf_title_batched.__name__}: {e}")
+                # TODO: can we fix this?
+                title = ''
+            other_list.append((idx, title))
+    if len(arxiv_id_list) > 0:
+        out = arxiv.query(id_list=[_[1] for _ in arxiv_id_list])
+        titles = [_['title'].strip().replace('\n', '') for _ in out]
+        arxiv_list = [(arxiv_id_list[i][0], titles[i]) for i in range(len(arxiv_id_list))]
+
+    ret = [''] * len(pdf_path_list)
+    for idx, title in other_list:
+        ret[idx] = title
+    for idx, title in arxiv_list:
+        ret[idx] = title
+    return ret
+
 
 def scan_dir(directory):
-    ret = []
+    pdf_list = []
     for path, directories, files in os.walk(directory, topdown=True):
         for file in files:
             if file.endswith('.pdf'):
                 file = os.path.join(path, file)
-                annotation = read_annotations(file)
-                ret.append(Document(file, annotations=annotation, title=''))
+                pdf_list.append(file)
+    titles = guess_pdf_title_batched(pdf_list)
+    ret = []
+    for idx, file in enumerate(pdf_list):
+        annotation = read_annotations(file)
+        ret.append(Document(file, annotations=annotation, title=titles[idx]))
 
     ret = '\n'.join(a.to_markdown() for a in ret)
     return ret
+
+
 if __name__ == "__main__":
     # test = '1704.05018.pdf'
     # anno = read_annotations(test)
@@ -104,5 +142,6 @@ if __name__ == "__main__":
     # print(doc.to_markdown())
     # print(scan_dir('.'))
     target = '/workdir'
-    target_md = scan_dir(target)
+    os.chdir(target)
+    target_md = scan_dir('.')
     print(target_md)
