@@ -20,9 +20,9 @@ class TextAnno:
         self.main_text = main_text
 
     def to_markdown(self) -> str:
-        txt = '<span style="color:rgb' + str(self.color) + '">' + self.main_text + '</span>'
+        txt = '<span style="background-color:rgb' + str(self.color) + '">' + self.main_text + '</span>'
         if self.comments != '':
-            txt = r'<div title="' + self.comments + '">' + txt + '</div>'
+            txt = '<div title="' + self.comments + '">' + txt + '</div>'
         return txt
 
 
@@ -36,6 +36,7 @@ def read_annotations(pdf_path) -> List[TextAnno]:
         pwidth, pheight = page.pageSize().width(), page.pageSize().height()
         for annotation in annotations:
             if isinstance(annotation, popplerqt5.Poppler.Annotation):
+                contents = annotation.contents()
                 if isinstance(annotation, popplerqt5.Poppler.HighlightAnnotation):
                     quads = annotation.highlightQuads()
                     txt = ""
@@ -51,13 +52,13 @@ def read_annotations(pdf_path) -> List[TextAnno]:
 
                     # Get color. Note that getRgb returns a tuple of (R,G,B,Alpha)
                     color = annotation.style().color().getRgb()[:3]
-                    if annotation.contents():
-                        ret.append(TextAnno(txt, color=color, comments=annotation.contents))
+                    if contents:
+                        ret.append(TextAnno(txt, color=color, comments=contents))
                     else:
                         ret.append(TextAnno(txt, color=color))
                 elif isinstance(annotation, popplerqt5.Poppler.TextAnnotation):
-                    if annotation.contents():
-                        ret.append(TextAnno(annotation.contents()))
+                    if contents:
+                        ret.append(TextAnno(contents))
     return ret
 
 
@@ -140,8 +141,8 @@ if __name__ == "__main__":
     # anno = read_annotations(test)
     # doc = Document(test, annotations=anno, title=guess_pdf_title(test))
     # print(doc.to_markdown())
-    # print(scan_dir('.'))
-    target = '/workdir'
-    os.chdir(target)
-    target_md = scan_dir('.')
-    print(target_md)
+    print(scan_dir('.'))
+    # target = '/workdir'
+    # os.chdir(target)
+    # target_md = scan_dir('.')
+    # print(target_md)
