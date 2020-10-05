@@ -119,6 +119,29 @@ def guess_pdf_title_batched(pdf_path_list: List[str]) -> List[str]:
     return ret
 
 
+# Adding open all and close all buttons.
+_extra_html = """
+<script>
+  function openAll() {
+    var x = document.getElementsByTagName("details");
+    var i;
+    for (i = 0; i < x.length; i++) {
+      x[i].open = true
+
+    }
+  }
+  function closeAll() {
+    var x = document.getElementsByTagName("details");
+    var i;
+    for (i = 0; i < x.length; i++) {
+      x[i].open = false
+    }
+  }
+</script>
+<button onclick="openAll()">Expand All</button>
+<button onclick="closeAll()">Close All</button>
+"""
+
 def scan_dir(directory):
     pdf_list = []
     for path, directories, files in os.walk(directory, topdown=True):
@@ -132,7 +155,8 @@ def scan_dir(directory):
         annotation = read_annotations(file)
         ret.append(Document(file, annotations=annotation, title=titles[idx]))
 
-    ret = '\n'.join(a.to_markdown() for a in ret)
+    ret = '\n'.join(doc.to_markdown() for doc in ret)
+    ret = _extra_html + ret
     return ret
 
 
@@ -141,8 +165,8 @@ if __name__ == "__main__":
     # anno = read_annotations(test)
     # doc = Document(test, annotations=anno, title=guess_pdf_title(test))
     # print(doc.to_markdown())
-    print(scan_dir('.'))
-    # target = '/workdir'
-    # os.chdir(target)
-    # target_md = scan_dir('.')
-    # print(target_md)
+    # print(scan_dir('.'))
+    target = '/workdir'
+    os.chdir(target)
+    target_md = scan_dir('.')
+    print(target_md)
