@@ -73,19 +73,19 @@ class Document:
             title = self.title
         else:
             title = self.pdf_path.name
-        summary = f'<a href="{self.pdf_path}">{title}</a>'
-        ret = _template.replace('SUMMARY', summary)
-        ret = ret + _template_2.replace("MAIN", '<br>\n'.join('- ' + a.to_markdown() for a in self.annotations))
-        return ret
-
-
-_template = """<details>
-  <summary>SUMMARY</summary>"""
-_template_2 = """<p>
-MAIN
+        file_link = f'<a href="{self.pdf_path}">{self.pdf_path.name}</a>'
+        main = '<br>\n'.join('- ' + a.to_markdown() for a in self.annotations)
+        ret = f"""\
+<details>
+<summary>{title}</summary>
+<p>
+{file_link}<br>
+{main}
 </p>
 </details>
-"""
+        """
+        return ret
+
 
 _arxiv_pattern = re.compile(r"\d*\.\d*\.pdf")
 
@@ -121,6 +121,22 @@ def guess_pdf_title_batched(pdf_path_list: List[str]) -> List[str]:
 
 # Adding open all and close all buttons.
 _extra_html = """
+<style>
+  details > summary {
+    padding: 4px;
+    background-color: #eeeeee;
+    border: none;
+    box-shadow: 1px 1px 2px #bbbbbb;
+    cursor: pointer;
+  }
+  
+  details > p {
+    background-color: #eeeeee;
+    padding: 4px;
+    margin: 0;
+    box-shadow: 1px 1px 2px #bbbbbb;
+  }
+</style>
 <script>
   function openAll() {
     var x = document.getElementsByTagName("details");
@@ -141,6 +157,7 @@ _extra_html = """
 <button onclick="openAll()">Expand All</button>
 <button onclick="closeAll()">Close All</button>
 """
+
 
 def scan_dir(directory):
     pdf_list = []
