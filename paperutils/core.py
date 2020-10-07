@@ -1,0 +1,137 @@
+import re
+from pathlib import Path
+from typing import Tuple, List
+
+import PyQt5
+import arxiv
+import popplerqt5
+from loguru import logger
+from pdfminer.pdffont import PDFUnicodeNotDefined
+from pdftitle import get_title_from_file
+
+_WHITE = (255, 255, 255)
+
+
+class TextAnno:
+    def __init__(self, main_text, color: Tuple[int, int, int] = _WHITE, comments=''):
+        self.comments = comments
+        self.color = color
+        self.main_text = main_text
+
+    def to_markdown(self) -> str:
+        txt = '<span style="background-color:rgb' + str(self.color) + '">' + self.main_text + '</span>'
+        if self.comments != '':
+            txt = '<div title="' + self.comments + '">' + txt + '</div>'
+        return txt
+
+
+def read_annotations(pdf_path) -> List[TextAnno]:
+    doc = popplerqt5.Poppler.Document.load(pdf_path)
+    ret = []
+
+    for i in range(doc.numPages()):
+        page = doc.page(i)
+        annotations = page.annotations()
+        pwidth, pheight = page.pageSize().width(), page.pageSize().height()
+        for annotation in annotations:
+            if isinstance(annotation, popplerqt5.Poppler.Annotation):
+                contents = annotation.contents()
+                if isinstance(annotation, popplerqt5.Poppler.HighlightAnnotation):
+                    quads = annotation.highlightQuads()
+                    txt = ""
+                    for quad in quads:
+                        rect = (quad.points[0].x() * pwidth,
+                                quad.points[0].y() * pheight,
+                                quad.points[2].x() * pwidth,
+                                quad.points[2].y() * pheight)
+                        # noinspection PyUnresolvedReferences
+                        bdy = PyQt5.QtCore.QRectF()
+                        bdy.setCoords(*rect)
+                        txt = txt + str(page.text(bdy)) + ' '
+
+                    # Get color. Note that getRgb returns a tuple of (R,G,B,Alpha)
+                    color = annotation.style().color().getRgb()[:3]
+                    if contents:
+                        ret.append(TextAnno(txt, color=color, comments=contents))
+                    else:
+                        ret.append(TextAnno(txt, color=color))
+                elif isinstance(annotation, popplerqt5.Poppler.TextAnnotation):
+                    if contents:
+                        ret.append(TextAnno(contents))
+    return ret
+
+
+class Document:
+    def __init__(self, pdf_path, annotations: List[TextAnno], title=''):
+        self.pdf_path = Path(pdf_path)
+        self.annotations = annotations
+        self.title = title
+
+    def to_markdown(self) -> str:
+        if self.title != '':
+            title = self.title
+        else:
+            title = self.pdf_path.name
+        file_link = f'<a href="{self.pdf_path}">{self.pdf_path.name}</a>'
+        main = '<br>\n'.join('- ' + a.to_markdown() for a in self.annotations)
+        ret = f"""\
+<details>
+<summary>{title}</summary>
+<p>
+{file_link}<br>
+{main}
+</p>
+</details>
+        """
+        return ret
+
+
+_arxiv_pattern = re.compile(r"\d*\.\d*\.pdf")
+
+
+def _guess_title_1(pdf_path_list):
+    ret = []
+    for pdf_path in pdf_path_list:
+        try:
+            title = get_title_from_file(pdf_path)
+            ret.append(title)
+        except PDFUnicodeNotDefined as e:
+            logger.error(f"Cannot guess title of {pdf_path}. PDFUnicodeNotDefined {e}")
+            ret.append('')
+    return ret
+
+
+def guess_pdf_title_batched(pdf_path_list: List[str], check_arxiv=False) -> List[str]:
+    if not check_arxiv:
+        return _guess_title_1(pdf_path_list)
+    # else
+    arxiv_id_list = []
+    other_list_pdf_path = []
+    other_list_idx = []
+    for idx, pdf_path in enumerate(pdf_path_list):
+        pdf_path = Path(pdf_path)
+        if _arxiv_pattern.match(pdf_path.name):
+            arxiv_id_list.append((idx, pdf_path.name[:-4]))  # strip ".pdf"
+        else:
+            other_list_pdf_path.append(pdf_path)
+            other_list_idx.append(idx)
+            # other_list.append((idx, pdf_path))
+            # try:
+            #     title = get_title_from_file(pdf_path)
+            # except PDFUnicodeNotDefined as e:
+            #     logger.error(f"Error in {guess_pdf_title_batched.__name__}: {e}")
+            #     # TODO: can we fix this?
+            #     title = ''
+            # other_list.append((idx, title))
+    other_list = zip(other_list_idx, _guess_title_1(other_list_pdf_path))
+    ret = [''] * len(pdf_path_list)
+    for idx, title in other_list:
+        ret[idx] = title
+
+    if len(arxiv_id_list) > 0:
+        out = arxiv.query(id_list=[_[1] for _ in arxiv_id_list])
+        titles = [_['title'].strip().replace('\n', '') for _ in out]
+        arxiv_list = [(arxiv_id_list[i][0], titles[i]) for i in range(len(arxiv_id_list))]
+        for idx, title in arxiv_list:
+            ret[idx] = title
+    return ret

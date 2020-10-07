@@ -1,6 +1,6 @@
 import unittest
 
-from main import TextAnno
+from paperutils.core import TextAnno
 
 
 class MyTestCase(unittest.TestCase):
