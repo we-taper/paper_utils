@@ -1,4 +1,6 @@
+import os
 import re
+import sys
 from pathlib import Path
 from typing import Tuple, List
 
@@ -85,7 +87,101 @@ class Document:
         return ret
 
 
-_arxiv_pattern = re.compile(r"\d*\.\d*\.pdf")
+HTML_ID = "Folder"
+CSS_STYLE = """\
+#{HTML_ID} {
+    padding: 4px;
+    background-color: #27d327;
+    border: none;
+    box-shadow: 1px 1px 2px #bbbbbb;
+    cursor: pointer;
+}
+""".replace("HTML_ID", HTML_ID)
+
+# Adding open all and close all buttons.
+_extra_html = """
+<style>
+  #HTML_ID {
+    padding: 8px;
+    background-color: #e0e0e0;
+    border: none;
+    box-shadow: 1px 1px 2px #bbbbbb;
+    cursor: pointer;
+  }
+  details > summary {
+    padding: 4px;
+    background-color: #eeeeee;
+    border: none;
+    box-shadow: 1px 1px 2px #bbbbbb;
+    cursor: pointer;
+  }
+
+  details > p {
+    background-color: #eeeeee;
+    padding: 4px;
+    margin: 0;
+    box-shadow: 1px 1px 2px #bbbbbb;
+  }
+</style>
+<script>
+  function openAll() {
+    var x = document.getElementsByTagName("details");
+    var i;
+    for (i = 0; i < x.length; i++) {
+      x[i].open = true
+
+    }
+  }
+  function closeAll() {
+    var x = document.getElementsByTagName("details");
+    var i;
+    for (i = 0; i < x.length; i++) {
+      x[i].open = false
+    }
+  }
+</script>
+<button onclick="openAll()">Expand All</button>
+<button onclick="closeAll()">Close All</button>
+""".replace("HTML_ID", HTML_ID)
+
+
+def _scan_dir2(directory, check_arxiv=False) -> str:
+    dir_contents = sorted(os.listdir(directory))
+    pdf_list = []
+    sub_dirs = []
+    for c in dir_contents:
+        c = os.path.join(directory, c)
+        if os.path.isdir(c):
+            sub_dirs.append(c)
+        elif c.endswith('.pdf'):
+            pdf_list.append(c)
+        else:
+            pass
+    sub_dirs = '\n'.join(_scan_dir2(_) for _ in sub_dirs)
+    file_titles = guess_pdf_title_batched(pdf_list, check_arxiv=check_arxiv)
+    docs = []
+    for idx, file in enumerate(pdf_list):
+        annotation = read_annotations(file)
+        docs.append(Document(file, annotations=annotation, title=file_titles[idx]))
+    docs = '\n'.join(doc.to_markdown() for doc in docs)
+    if docs == '' and sub_dirs == '':
+        return ''
+    folder_name = Path(directory).name
+    text = f"""\
+<details id="{HTML_ID}">
+<summary>{folder_name}</summary>
+<p>
+{docs}
+{sub_dirs}
+</p>
+</details>
+"""
+    return text
+
+
+def scan_dir2(directory, check_arxiv=False) -> str:
+    text = _scan_dir2(directory, check_arxiv=check_arxiv)
+    return _extra_html + text
 
 
 def _guess_title_1(pdf_path_list):
@@ -98,6 +194,9 @@ def _guess_title_1(pdf_path_list):
             logger.error(f"Error guess title for {pdf_path}: {type(e)}({e})")
             ret.append('')
     return ret
+
+
+_arxiv_pattern = re.compile(r"\d*\.\d*\.pdf")
 
 
 def guess_pdf_title_batched(pdf_path_list: List[str], check_arxiv=False) -> List[str]:
