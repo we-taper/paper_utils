@@ -6,7 +6,6 @@ import PyQt5
 import arxiv
 import popplerqt5
 from loguru import logger
-from pdfminer.pdffont import PDFUnicodeNotDefined
 from pdftitle import get_title_from_file
 
 _WHITE = (255, 255, 255)
@@ -95,8 +94,8 @@ def _guess_title_1(pdf_path_list):
         try:
             title = get_title_from_file(pdf_path)
             ret.append(title)
-        except PDFUnicodeNotDefined as e:
-            logger.error(f"Cannot guess title of {pdf_path}. PDFUnicodeNotDefined {e}")
+        except Exception as e:
+            logger.error(f"Error guess title for {pdf_path}: {type(e)}({e})")
             ret.append('')
     return ret
 
